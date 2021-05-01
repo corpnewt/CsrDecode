@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os, textwrap
 from typing import List, Iterator, Tuple
