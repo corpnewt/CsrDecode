@@ -12,8 +12,7 @@ except ImportError:
 
     OrderedDict = MutableMapping
 
-# Updated Bits for Big Sur
-# https://opensource.apple.com/source/xnu/xnu-7195.50.7.100.1/bsd/sys/csr.h.auto.html
+# source: https://opensource.apple.com/source/xnu/xnu-7195.81.3/bsd/sys/csr.h.auto.html
 
 csr_list: List[str] = [
     'CSR_ALLOW_UNTRUSTED_KEXTS',  # 1 << 0
