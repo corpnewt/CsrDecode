@@ -1,66 +1,58 @@
-#!/usr/bin/env python
-import sys, os, re
+#!/usr/bin/env python3
 
-csr_list = [
-    "CSR_ALLOW_UNTRUSTED_KEXTS",
-    "CSR_ALLOW_UNRESTRICTED_FS",
-    "CSR_ALLOW_TASK_FOR_PID",
-    "CSR_ALLOW_KERNEL_DEBUGGER",
-    "CSR_ALLOW_APPLE_INTERNAL",
-    # "CSR_ALLOW_DESTRUCTIVE_DTRACE (name deprecated)",
-    "CSR_ALLOW_UNRESTRICTED_DTRACE",
-    "CSR_ALLOW_UNRESTRICTED_NVRAM",
-    "CSR_ALLOW_DEVICE_CONFIGURATION",
-    "CSR_ALLOW_ANY_RECOVERY_OS",
-    "CSR_ALLOW_UNAPPROVED_KEXTS",
-    "CSR_ALLOW_EXECUTABLE_POLICY_OVERRIDE"
+import os, textwrap
+from typing import List, Iterator, Tuple
+from dataclasses import dataclass
+
+try:
+    # Python 3.7.2+
+    from typing import OrderedDict
+except ImportError:
+    from typing import MutableMapping
+
+    OrderedDict = MutableMapping
+
+# source: https://opensource.apple.com/source/xnu/xnu-7195.81.3/bsd/sys/csr.h.auto.html
+
+csr_list: List[str] = [
+    'CSR_ALLOW_UNTRUSTED_KEXTS',  # 1 << 0
+    'CSR_ALLOW_UNRESTRICTED_FS',  # 1 << 1
+    'CSR_ALLOW_TASK_FOR_PID',  # 1 << 2
+    'CSR_ALLOW_KERNEL_DEBUGGER',  # 1 << 3
+    'CSR_ALLOW_APPLE_INTERNAL',  # 1 << 4
+    'CSR_ALLOW_UNRESTRICTED_DTRACE',  # 1 << 5
+    'CSR_ALLOW_UNRESTRICTED_NVRAM',  # 1 << 6
+    'CSR_ALLOW_DEVICE_CONFIGURATION',  # 1 << 7
+    'CSR_ALLOW_ANY_RECOVERY_OS',  # 1 << 8
+    'CSR_ALLOW_UNAPPROVED_KEXTS',  # 1 << 9
+    'CSR_ALLOW_EXECUTABLE_POLICY_OVERRIDE',  # 1 << 10
+    'CSR_ALLOW_UNAUTHENTICATED_ROOT',  # 1 << 11
 ]
-csr_dict = {}
-val = 1
-for key in csr_list:
-    csr_dict[str(val)] = key
-    val *= 2
 
-def cls():
-  	os.system('cls' if os.name=='nt' else 'clear')
 
-def grab(prompt = ""):
-    if sys.version_info >= (3, 0):
-        return input(prompt)
-    else:
-        return str(raw_input(prompt))
+def clear_screen():
+    os.system('clear_screen' if os.name == 'nt' else 'clear')
 
-def _check_hex(hex_string):
-    # Remove 0x/0X
-    hex_string = hex_string.replace("0x", "").replace("0X", "")
-    hex_string = re.sub(r'[^0-9A-Fa-f]+', '', hex_string)
-    return hex_string
 
-def hex_to_dec(hex_string):
-    hex_string = _check_hex(hex_string)
-    if not len(hex_string):
-        return None
-    try:
-        dec = int(hex_string, 16)
-    except:
-        return None
-    return dec
+# zip list to dict containing shift values
+def csr_list_with_shift_vals_iter() -> Iterator[Tuple[str, int]]:
+    return zip(csr_list, range(32))
 
-def hex_to_vals(hex_string):
-    # Convert the hex to decimal string - then start with a reversed list
-    # and find out which values we have enabled
-    dec = hex_to_dec(hex_string)
-    if not dec:
-        return []
-    has = []
-    for key in sorted(csr_dict, key=lambda x:int(x), reverse=True):
-        if int(key) <= dec:
-            has.append(csr_dict[str(key)])
-            dec -= int(key)
-    return has
+
+def reverse_hex(hex: str) -> str:
+    return ''.join(textwrap.wrap(hex, 2)[::-1])
+
+
+def hex_to_vals(hex: str) -> List[str]:
+    # split to 2 bytesh chunks, reverse list, join, convert to 10 base
+    dec: int = int(reverse_hex(hex), 16)
+
+    # filter by bitmask
+    return [x[0] for x in csr_list_with_shift_vals_iter() if dec & 1 << x[1]]
+
 
 def main():
-    cls()
+    clear_screen()
     print("# CsrDecode #")
     print("")
     print("1. Hex To Values")
@@ -68,7 +60,7 @@ def main():
     print("")
     print("Q. Quit")
     print("")
-    menu = grab("Please select an option:  ").lower()
+    menu = input("Please select an option:  ").lower()
     if not len(menu):
         return
     if menu == "q":
@@ -78,13 +70,14 @@ def main():
     elif menu == "2":
         v_to_h()
     return
-    
+
+
 def h_to_v():
-    cls()
+    clear_screen()
     print("# CsrActiveConfig Hex To Values #")
     print("")
     while True:
-        h = grab("Please type a CsrActiveConfig value (m for main menu):  ")
+        h = input("Please type a CsrActiveConfig value (m for main menu):  ")
         if not h:
             continue
         if h.lower() == "m":
@@ -97,26 +90,33 @@ def h_to_v():
         else:
             print("\nActive values:\n\n{}\n".format("\n".join(has)))
 
+
 def v_to_h():
     # Create a dict with all values unchecked
-    toggle_dict = []
-    for x in sorted(csr_dict, key=lambda x:int(x)):
-        toggle_dict.append({"value":int(x),"enabled":False,"name":csr_dict[x]})
+    @dataclass
+    class Toggle:
+        enabled: bool
+        name: str
+        value: int
+
+    toggle_list: List[Toggle] = [Toggle(enabled=False, name=x[0], value=1 << x[1]) for x in
+                                 csr_list_with_shift_vals_iter()]
+
     while True:
-        cls()
+        clear_screen()
+
         print("# CsrActiveConfig Values To Hex #")
         print("")
+
         # Print them out
-        for x,y in enumerate(toggle_dict,1):
-            print("[{}] {}. {} - {}".format("#" if y["enabled"] else " ", x, y["name"],hex(y["value"])))
+        for x, y in enumerate(toggle_list, 1):
+            print("[{}] {}. {} - {}".format("#" if y.enabled else " ", x, y.name, '0x{:08X}'.format(y.value)))
         print("")
+
         # Add the values of the enabled together
-        curr = 0
-        for x in toggle_dict:
-            if not x["enabled"]:
-                continue
-            curr += x["value"]
-        print("Current:  {}".format(hex(curr)))
+        cur_val = '{:08X}'.format(sum(map(lambda x: x.value, filter(lambda x: x.enabled, toggle_list)), 0))
+
+        print("Current:  0x{} [{}]".format(cur_val, reverse_hex(cur_val)))
         print("")
         print("A. Select All")
         print("N. Select None")
@@ -125,7 +125,7 @@ def v_to_h():
         print("")
         print("Select options to toggle with comma-delimited lists (eg. 1,2,3,4,5)")
         print("")
-        menu = grab("Please make your selection:  ").lower()
+        menu = input("Please make your selection:  ").lower()
         if not len(menu):
             continue
         if menu == "m":
@@ -133,23 +133,24 @@ def v_to_h():
         elif menu == "q":
             exit()
         elif menu == "a":
-            for x in toggle_dict:
-                x["enabled"] = True
+            for x in toggle_list:
+                x.enabled = True
             continue
         elif menu == "n":
-            for x in toggle_dict:
-                x["enabled"] = False
+            for x in toggle_list:
+                x.enabled = False
             continue
         # Should be numbers
         try:
-            nums = [int(x) for x in menu.replace(" ","").split(",")]
+            nums = [int(x) for x in menu.replace(" ", "").split(",")]
             for x in nums:
-                if x < 1 or x > len(toggle_dict):
+                if x < 1 or x > len(toggle_list):
                     # Out of bounds - skip
                     continue
-                toggle_dict[x-1]["enabled"] ^= True
+                toggle_list[x - 1].enabled ^= True
         except:
             continue
+
 
 while True:
     main()
